@@ -7,9 +7,15 @@
 
 <PageTitle>LINE_VIS - Detail</PageTitle>
 
-<div class="mb-3">
-    <button class="btn btn-secondary" @onclick="GoBack">
-        &larr; Retour a la liste
+<div class="mb-3 d-flex gap-2">
+    <button class="btn btn-secondary" @onclick="GoBackToList">
+        &larr; Liste
+    </button>
+    <button class="btn btn-outline-primary" @onclick="GoToPrevious" disabled="@(!NavHistory.CanGoBack)">
+        &larr; Precedent
+    </button>
+    <button class="btn btn-outline-danger" @onclick="UndoLast" disabled="@(!NavHistory.CanUndo)">
+        &#x21B6; Annuler
     </button>
 </div>
 
@@ -354,9 +360,29 @@ else
         NavHistory.AddNode(dta1, dta2, dta3, dta4);
     }
 
-    private void GoBack()
+    private void GoBackToList()
     {
         Navigation.NavigateTo("/");
+    }
+
+    private void GoToPrevious()
+    {
+        var previousNode = NavHistory.GoBack();
+        if (previousNode != null)
+        {
+            var url = $"/detail/{Uri.EscapeDataString(previousNode.DTA_1 ?? "")}/{Uri.EscapeDataString(previousNode.DTA_2 ?? "")}/{Uri.EscapeDataString(previousNode.DTA_3 ?? "")}/{Uri.EscapeDataString(previousNode.DTA_4 ?? "")}";
+            Navigation.NavigateTo(url);
+        }
+    }
+
+    private void UndoLast()
+    {
+        var sourceNode = NavHistory.Undo();
+        if (sourceNode != null)
+        {
+            var url = $"/detail/{Uri.EscapeDataString(sourceNode.DTA_1 ?? "")}/{Uri.EscapeDataString(sourceNode.DTA_2 ?? "")}/{Uri.EscapeDataString(sourceNode.DTA_3 ?? "")}/{Uri.EscapeDataString(sourceNode.DTA_4 ?? "")}";
+            Navigation.NavigateTo(url);
+        }
     }
 
     private string TruncateLabel(string? label, int maxLen = 8)

@@ -10,6 +10,7 @@ public class NavigationHistoryService
 {
     private readonly List<GraphNode> _nodes = new();
     private readonly List<GraphEdge> _edges = new();
+    private readonly Stack<string> _navigationStack = new(); // Pile de navigation (pour Precedent)
     private int _nodeIdCounter = 0;
     private int _edgeIdCounter = 0;
     private string? _currentNodeKey = null;
@@ -18,6 +19,8 @@ public class NavigationHistoryService
     public IReadOnlyList<GraphEdge> Edges => _edges;
     public int NodeCount => _nodes.Count;
     public int EdgeCount => _edges.Count;
+    public bool CanGoBack => _navigationStack.Count > 1;
+    public bool CanUndo => _edges.Count > 0;
 
     /// <summary>
     /// Ajoute un noeud au graphe (premier acces depuis la liste)
@@ -45,6 +48,9 @@ public class NavigationHistoryService
         // Mettre a jour l'etat actif
         SetActiveNode(key);
         _currentNodeKey = key;
+
+        // Ajouter a la pile de navigation
+        _navigationStack.Push(key);
 
         return existingNode;
     }
@@ -96,7 +102,85 @@ public class NavigationHistoryService
         SetActiveNode(targetKey);
         _currentNodeKey = targetKey;
 
+        // Ajouter a la pile de navigation
+        _navigationStack.Push(targetKey);
+
         return targetNode;
+    }
+
+    /// <summary>
+    /// Revient au noeud precedent (sans supprimer l'arete)
+    /// </summary>
+    public GraphNode? GoBack()
+    {
+        if (_navigationStack.Count <= 1)
+            return null;
+
+        // Retirer le noeud actuel
+        _navigationStack.Pop();
+
+        // Obtenir le noeud precedent
+        var previousKey = _navigationStack.Peek();
+        var previousNode = GetNode(previousKey);
+
+        if (previousNode != null)
+        {
+            SetActiveNode(previousKey);
+            _currentNodeKey = previousKey;
+        }
+
+        return previousNode;
+    }
+
+    /// <summary>
+    /// Annule la derniere action (supprime la derniere arete et le noeud si orphelin)
+    /// </summary>
+    public GraphNode? Undo()
+    {
+        if (_edges.Count == 0)
+            return null;
+
+        // Supprimer la derniere arete
+        var lastEdge = _edges[_edges.Count - 1];
+        _edges.RemoveAt(_edges.Count - 1);
+
+        // Verifier si le noeud cible est orphelin (pas d'autres aretes)
+        var targetKey = lastEdge.TargetKey;
+        var hasOtherEdges = _edges.Any(e => e.SourceKey == targetKey || e.TargetKey == targetKey);
+
+        if (!hasOtherEdges && _nodes.Count > 1)
+        {
+            // Supprimer le noeud orphelin
+            var orphanNode = _nodes.FirstOrDefault(n => n.Key == targetKey);
+            if (orphanNode != null)
+            {
+                _nodes.Remove(orphanNode);
+            }
+        }
+
+        // Revenir au noeud source
+        var sourceKey = lastEdge.SourceKey;
+        var sourceNode = GetNode(sourceKey);
+
+        if (sourceNode != null)
+        {
+            SetActiveNode(sourceKey);
+            _currentNodeKey = sourceKey;
+
+            // Mettre a jour la pile de navigation
+            if (_navigationStack.Count > 0 && _navigationStack.Peek() == targetKey)
+            {
+                _navigationStack.Pop();
+            }
+        }
+
+        // Renumeroter les aretes
+        for (int i = 0; i < _edges.Count; i++)
+        {
+            _edges[i].Order = i + 1;
+        }
+
+        return sourceNode;
     }
 
     /// <summary>
@@ -125,12 +209,29 @@ public class NavigationHistoryService
     }
 
     /// <summary>
+    /// Obtient le noeud precedent sans naviguer
+    /// </summary>
+    public GraphNode? PeekPrevious()
+    {
+        if (_navigationStack.Count <= 1)
+            return null;
+
+        var stackArray = _navigationStack.ToArray();
+        if (stackArray.Length > 1)
+        {
+            return GetNode(stackArray[1]); // Index 1 car ToArray inverse la pile
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Efface tout l'historique
     /// </summary>
     public void Clear()
     {
         _nodes.Clear();
         _edges.Clear();
+        _navigationStack.Clear();
         _nodeIdCounter = 0;
         _edgeIdCounter = 0;
         _currentNodeKey = null;
@@ -163,6 +264,18 @@ public class NavigationHistoryService
             _edges.Count(e => e.Direction == EdgeDirection.ToPredecessor),
             _edges.Count(e => e.Direction == EdgeDirection.ToSuccessor)
         );
+    }
+
+    /// <summary>
+    /// Obtient l'historique de navigation
+    /// </summary>
+    public IEnumerable<GraphNode> GetNavigationHistory()
+    {
+        return _navigationStack
+            .Select(key => GetNode(key))
+            .Where(n => n != null)
+            .Cast<GraphNode>()
+            .Reverse();
     }
 
     private void SetActiveNode(string key)
