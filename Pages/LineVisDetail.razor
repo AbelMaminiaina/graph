@@ -1,0 +1,460 @@
+@page "/detail/{DTA1}/{DTA2}/{DTA3}/{DTA4}"
+@using LineVisApp.Models
+@using LineVisApp.Services
+@inject ILineVisService LineVisService
+@inject NavigationHistoryService NavHistory
+@inject NavigationManager Navigation
+
+<PageTitle>LINE_VIS - Detail</PageTitle>
+
+<div class="mb-3">
+    <button class="btn btn-secondary" @onclick="GoBack">
+        &larr; Retour a la liste
+    </button>
+</div>
+
+@if (_loading)
+{
+    <p><em>Chargement...</em></p>
+}
+else
+{
+    <div class="row">
+        <!-- Colonne gauche: Details et tableaux -->
+        <div class="col-md-5">
+            <!-- Detail de la ligne selectionnee -->
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Donnee selectionnee</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr><th>DTA_1</th><td>@Uri.UnescapeDataString(DTA1)</td></tr>
+                        <tr><th>DTA_2</th><td>@Uri.UnescapeDataString(DTA2)</td></tr>
+                        <tr><th>DTA_3</th><td>@Uri.UnescapeDataString(DTA3)</td></tr>
+                        <tr><th>DTA_4</th><td>@Uri.UnescapeDataString(DTA4)</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tableau des predecesseurs -->
+            <div class="card mb-3">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Predecesseurs (@_predecesseurs.Count())</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (!_predecesseurs.Any())
+                    {
+                        <p class="p-3 mb-0">Aucun predecesseur</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>EDG_1</th>
+                                        <th>EDG_2</th>
+                                        <th>EDG_3</th>
+                                        <th>EDG_4</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var edge in _predecesseurs)
+                                    {
+                                        <tr @onclick="() => NavigateToPredecessor(edge)" style="cursor: pointer;" class="@(IsNodeVisited(edge) ? "table-warning" : "")">
+                                            <td>@edge.EDG_1</td>
+                                            <td>@edge.EDG_2</td>
+                                            <td>@edge.EDG_3</td>
+                                            <td>@edge.EDG_4</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Tableau des successeurs -->
+            <div class="card mb-3">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Successeurs (@_successeurs.Count())</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (!_successeurs.Any())
+                    {
+                        <p class="p-3 mb-0">Aucun successeur</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>EDG_1</th>
+                                        <th>EDG_2</th>
+                                        <th>EDG_3</th>
+                                        <th>EDG_4</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var edge in _successeurs)
+                                    {
+                                        <tr @onclick="() => NavigateToSuccessor(edge)" style="cursor: pointer;" class="@(IsNodeVisited(edge) ? "table-success" : "")">
+                                            <td>@edge.EDG_1</td>
+                                            <td>@edge.EDG_2</td>
+                                            <td>@edge.EDG_3</td>
+                                            <td>@edge.EDG_4</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Colonne droite: Graphe et Historique -->
+        <div class="col-md-7">
+            <!-- Statistiques du graphe -->
+            <div class="card mb-3">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Graphe de navigation</h5>
+                    <div>
+                        <span class="badge bg-secondary me-1">@NavHistory.NodeCount noeuds</span>
+                        <span class="badge bg-warning text-dark me-1">@NavHistory.Edges.Count(e => e.Direction == EdgeDirection.ToPredecessor) pred</span>
+                        <span class="badge bg-success me-1">@NavHistory.Edges.Count(e => e.Direction == EdgeDirection.ToSuccessor) succ</span>
+                        <button class="btn btn-sm btn-outline-light ms-2" @onclick="ClearHistory">
+                            Effacer
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-2">
+                    <div id="graph-container" style="width: 100%; height: 350px; border: 1px solid #ddd; background: #f8f9fa; overflow: auto; position: relative;">
+                        @if (NavHistory.NodeCount > 0)
+                        {
+                            @((MarkupString)GenerateGraphSvg())
+                        }
+                        else
+                        {
+                            <div class="d-flex justify-content-center align-items-center h-100 text-muted">
+                                <span>Cliquez sur predecesseurs/successeurs pour construire le graphe</span>
+                            </div>
+                        }
+                    </div>
+                    <!-- Legende -->
+                    <div class="mt-2 d-flex justify-content-center gap-4 small">
+                        <span><span style="color: #ffc107;">&#x2794;</span> Vers predecesseur</span>
+                        <span><span style="color: #198754;">&#x2794;</span> Vers successeur</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#0d6efd;border-radius:50%;"></span> Noeud actif</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Historique des noeuds -->
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Noeuds visites (@NavHistory.NodeCount)</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (NavHistory.NodeCount == 0)
+                    {
+                        <p class="p-3 mb-0">Aucun noeud</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 120px; overflow-y: auto;">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>DTA_1</th>
+                                        <th>DTA_2</th>
+                                        <th>DTA_3</th>
+                                        <th>DTA_4</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var node in NavHistory.Nodes)
+                                    {
+                                        <tr class="@(node.IsActive ? "table-primary" : "")" @onclick="() => NavigateToNode(node)" style="cursor: pointer;">
+                                            <td>@node.Id</td>
+                                            <td>@node.DTA_1</td>
+                                            <td>@node.DTA_2</td>
+                                            <td>@node.DTA_3</td>
+                                            <td>@node.DTA_4</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Historique des aretes -->
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">Aretes tracees (@NavHistory.EdgeCount)</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if (NavHistory.EdgeCount == 0)
+                    {
+                        <p class="p-3 mb-0">Aucune arete</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="max-height: 120px; overflow-y: auto;">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>De</th>
+                                        <th>Vers</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var edge in NavHistory.Edges)
+                                    {
+                                        var sourceNode = NavHistory.GetNode(edge.SourceKey);
+                                        var targetNode = NavHistory.GetNode(edge.TargetKey);
+                                        var badgeClass = edge.Direction == EdgeDirection.ToPredecessor ? "bg-warning text-dark" : "bg-success";
+                                        <tr>
+                                            <td>@edge.Order</td>
+                                            <td>@(sourceNode?.DTA_1 ?? "?")</td>
+                                            <td>@(targetNode?.DTA_1 ?? "?")</td>
+                                            <td><span class="badge @badgeClass">@(edge.Direction == EdgeDirection.ToPredecessor ? "Pred" : "Succ")</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string DTA1 { get; set; } = string.Empty;
+    [Parameter] public string DTA2 { get; set; } = string.Empty;
+    [Parameter] public string DTA3 { get; set; } = string.Empty;
+    [Parameter] public string DTA4 { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _isFirstLoad = true;
+    private IEnumerable<LineVisEdge> _predecesseurs = Enumerable.Empty<LineVisEdge>();
+    private IEnumerable<LineVisEdge> _successeurs = Enumerable.Empty<LineVisEdge>();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var dta1 = Uri.UnescapeDataString(DTA1);
+            var dta2 = Uri.UnescapeDataString(DTA2);
+            var dta3 = Uri.UnescapeDataString(DTA3);
+            var dta4 = Uri.UnescapeDataString(DTA4);
+
+            // Charger predecesseurs et successeurs en parallele
+            var predecesseursTask = LineVisService.GetPredecesseursAsync(dta1, dta2, dta3, dta4);
+            var successeursTask = LineVisService.GetSuccesseursAsync(dta1, dta2, dta3, dta4);
+
+            await Task.WhenAll(predecesseursTask, successeursTask);
+
+            _predecesseurs = await predecesseursTask;
+            _successeurs = await successeursTask;
+
+            // Premier acces depuis la liste = AddNode (pas d'arete)
+            if (_isFirstLoad || NavHistory.NodeCount == 0)
+            {
+                NavHistory.AddNode(dta1, dta2, dta3, dta4);
+                _isFirstLoad = false;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async void NavigateToPredecessor(LineVisEdge edge)
+    {
+        var dta1 = edge.EDG_1 ?? "";
+        var dta2 = edge.EDG_2 ?? "";
+        var dta3 = edge.EDG_3 ?? "";
+        var dta4 = edge.EDG_4 ?? "";
+
+        // Tracer la navigation vers predecesseur
+        NavHistory.NavigateTo(dta1, dta2, dta3, dta4, EdgeDirection.ToPredecessor);
+
+        var exists = await LineVisService.ExistsAsync(dta1, dta2, dta3, dta4);
+        if (exists)
+        {
+            var url = $"/detail/{Uri.EscapeDataString(dta1)}/{Uri.EscapeDataString(dta2)}/{Uri.EscapeDataString(dta3)}/{Uri.EscapeDataString(dta4)}";
+            Navigation.NavigateTo(url);
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async void NavigateToSuccessor(LineVisEdge edge)
+    {
+        var dta1 = edge.EDG_1 ?? "";
+        var dta2 = edge.EDG_2 ?? "";
+        var dta3 = edge.EDG_3 ?? "";
+        var dta4 = edge.EDG_4 ?? "";
+
+        // Tracer la navigation vers successeur
+        NavHistory.NavigateTo(dta1, dta2, dta3, dta4, EdgeDirection.ToSuccessor);
+
+        var exists = await LineVisService.ExistsAsync(dta1, dta2, dta3, dta4);
+        if (exists)
+        {
+            var url = $"/detail/{Uri.EscapeDataString(dta1)}/{Uri.EscapeDataString(dta2)}/{Uri.EscapeDataString(dta3)}/{Uri.EscapeDataString(dta4)}";
+            Navigation.NavigateTo(url);
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToNode(GraphNode node)
+    {
+        // Navigation depuis l'historique = pas de nouvelle arete, juste changer le noeud actif
+        var url = $"/detail/{Uri.EscapeDataString(node.DTA_1 ?? "")}/{Uri.EscapeDataString(node.DTA_2 ?? "")}/{Uri.EscapeDataString(node.DTA_3 ?? "")}/{Uri.EscapeDataString(node.DTA_4 ?? "")}";
+        Navigation.NavigateTo(url);
+    }
+
+    private bool IsNodeVisited(LineVisEdge edge)
+    {
+        return NavHistory.ContainsNode(edge.EDG_1, edge.EDG_2, edge.EDG_3, edge.EDG_4);
+    }
+
+    private void ClearHistory()
+    {
+        NavHistory.Clear();
+        var dta1 = Uri.UnescapeDataString(DTA1);
+        var dta2 = Uri.UnescapeDataString(DTA2);
+        var dta3 = Uri.UnescapeDataString(DTA3);
+        var dta4 = Uri.UnescapeDataString(DTA4);
+        NavHistory.AddNode(dta1, dta2, dta3, dta4);
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private string TruncateLabel(string? label, int maxLen = 8)
+    {
+        if (string.IsNullOrEmpty(label)) return "N/A";
+        return label.Length > maxLen ? label.Substring(0, maxLen) + ".." : label;
+    }
+
+    private string GenerateGraphSvg()
+    {
+        var sb = new System.Text.StringBuilder();
+        var nodes = NavHistory.Nodes.ToList();
+        var edges = NavHistory.Edges.ToList();
+        var nodeCount = nodes.Count;
+
+        if (nodeCount == 0) return "";
+
+        var width = 600;
+        var height = 340;
+        var centerX = width / 2;
+        var centerY = height / 2;
+        var radius = Math.Min(width, height) / 2 - 60;
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        // Calculer les positions des noeuds
+        var nodePositions = new Dictionary<string, (double x, double y)>();
+        for (int i = 0; i < nodeCount; i++)
+        {
+            var angle = (2 * Math.PI * i / nodeCount) - Math.PI / 2;
+            var x = centerX + radius * Math.Cos(angle);
+            var y = centerY + radius * Math.Sin(angle);
+            nodePositions[nodes[i].Key] = (x, y);
+        }
+
+        sb.AppendLine($"<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 {width} {height}\">");
+
+        // Definitions (fleches)
+        sb.AppendLine("<defs>");
+        sb.AppendLine("<marker id=\"arrow-pred\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">");
+        sb.AppendLine("<polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#ffc107\" />");
+        sb.AppendLine("</marker>");
+        sb.AppendLine("<marker id=\"arrow-succ\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">");
+        sb.AppendLine("<polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#198754\" />");
+        sb.AppendLine("</marker>");
+        sb.AppendLine("</defs>");
+
+        // Dessiner les aretes
+        foreach (var edge in edges)
+        {
+            if (nodePositions.TryGetValue(edge.SourceKey, out var source) &&
+                nodePositions.TryGetValue(edge.TargetKey, out var target))
+            {
+                var color = edge.Direction == EdgeDirection.ToPredecessor ? "#ffc107" : "#198754";
+                var markerId = edge.Direction == EdgeDirection.ToPredecessor ? "arrow-pred" : "arrow-succ";
+
+                // Calculer le point d'arrivee (avant le cercle du noeud)
+                var dx = target.x - source.x;
+                var dy = target.y - source.y;
+                var dist = Math.Sqrt(dx * dx + dy * dy);
+                if (dist > 0)
+                {
+                    var nodeRadius = 22;
+                    var endX = target.x - (dx / dist) * nodeRadius;
+                    var endY = target.y - (dy / dist) * nodeRadius;
+                    var startX = source.x + (dx / dist) * nodeRadius;
+                    var startY = source.y + (dy / dist) * nodeRadius;
+
+                    sb.AppendLine($"<line x1=\"{startX.ToString(culture)}\" y1=\"{startY.ToString(culture)}\" x2=\"{endX.ToString(culture)}\" y2=\"{endY.ToString(culture)}\" stroke=\"{color}\" stroke-width=\"2\" marker-end=\"url(#{markerId})\" />");
+
+                    // Numero de l'arete au milieu
+                    var midX = (startX + endX) / 2;
+                    var midY = (startY + endY) / 2;
+                    sb.AppendLine($"<circle cx=\"{midX.ToString(culture)}\" cy=\"{midY.ToString(culture)}\" r=\"10\" fill=\"{color}\" />");
+                    sb.AppendLine($"<text x=\"{midX.ToString(culture)}\" y=\"{(midY + 4).ToString(culture)}\" text-anchor=\"middle\" fill=\"white\" font-size=\"10\" font-weight=\"bold\">{edge.Order}</text>");
+                }
+            }
+        }
+
+        // Dessiner les noeuds
+        for (int i = 0; i < nodeCount; i++)
+        {
+            var node = nodes[i];
+            var pos = nodePositions[node.Key];
+            var fillColor = node.IsActive ? "#0d6efd" : "#6c757d";
+            var strokeColor = node.IsActive ? "#0a58ca" : "#495057";
+            var label = TruncateLabel(node.DTA_1, 6);
+
+            // Cercle du noeud
+            sb.AppendLine($"<circle cx=\"{pos.x.ToString(culture)}\" cy=\"{pos.y.ToString(culture)}\" r=\"22\" fill=\"{fillColor}\" stroke=\"{strokeColor}\" stroke-width=\"2\" />");
+
+            // ID dans le cercle
+            sb.AppendLine($"<text x=\"{pos.x.ToString(culture)}\" y=\"{(pos.y + 5).ToString(culture)}\" text-anchor=\"middle\" fill=\"white\" font-size=\"12\" font-weight=\"bold\">{node.Id}</text>");
+
+            // Label sous le noeud
+            sb.AppendLine($"<text x=\"{pos.x.ToString(culture)}\" y=\"{(pos.y + 38).ToString(culture)}\" text-anchor=\"middle\" fill=\"#212529\" font-size=\"9\">{System.Web.HttpUtility.HtmlEncode(label)}</text>");
+        }
+
+        sb.AppendLine("</svg>");
+        return sb.ToString();
+    }
+}

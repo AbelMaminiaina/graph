@@ -1,0 +1,74 @@
+@page "/"
+@page "/linelist"
+@using LineVisApp.Models
+@using LineVisApp.Services
+@inject ILineVisService LineVisService
+@inject NavigationManager Navigation
+
+<PageTitle>LINE_VIS - Liste</PageTitle>
+
+<h3>Liste des données LINE_VIS</h3>
+
+@if (_loading)
+{
+    <p><em>Chargement...</em></p>
+}
+else if (_lines == null || !_lines.Any())
+{
+    <p>Aucune donnée trouvée.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>DTA_1</th>
+                    <th>DTA_2</th>
+                    <th>DTA_3</th>
+                    <th>DTA_4</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in _lines)
+                {
+                    <tr @onclick="() => NavigateToDetail(line)" style="cursor: pointer;">
+                        <td>@line.DTA_1</td>
+                        <td>@line.DTA_2</td>
+                        <td>@line.DTA_3</td>
+                        <td>@line.DTA_4</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" @onclick="() => NavigateToDetail(line)" @onclick:stopPropagation="true">
+                                Voir Détail
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IEnumerable<LineVisDistinct>? _lines;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _lines = await LineVisService.GetDistinctLinesAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void NavigateToDetail(LineVisDistinct line)
+    {
+        var url = $"/detail/{Uri.EscapeDataString(line.DTA_1 ?? "")}/{Uri.EscapeDataString(line.DTA_2 ?? "")}/{Uri.EscapeDataString(line.DTA_3 ?? "")}/{Uri.EscapeDataString(line.DTA_4 ?? "")}";
+        Navigation.NavigateTo(url);
+    }
+}
