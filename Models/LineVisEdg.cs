@@ -32,7 +32,7 @@ public class LineVisDistinct
 }
 
 /// <summary>
-/// Données des liens (prédécesseurs/successeurs)
+/// Données des liens (prédécesseurs/successeurs), avec l'en-tête LINE_VIS_HEA joint par LNA_UID
 /// </summary>
 public class LineVisEdge
 {
@@ -40,6 +40,27 @@ public class LineVisEdge
     public string? EDG_2 { get; set; }
     public string? EDG_3 { get; set; }
     public string? EDG_4 { get; set; }
+
+    // Colonnes de LINE_VIS_HEA (null si aucun en-tête pour ce LNA_UID)
+    public string? LNA_UID { get; set; }
+    public string? RON_APP { get; set; }
+    public string? PCK_PGM_NME { get; set; }
+    public string? EXE_PGM_NME { get; set; }
+    public string? VRS_EXE_PGM { get; set; }
+    public string? APP_ENV { get; set; }
+    public DateTime? DLY_PGM_TSP { get; set; }
+    public DateTime? LNA_TSP { get; set; }
+    public string? PGM_TEC { get; set; }
+    public string? VRS_LNA_TOO { get; set; }
+    public int? TUS_IND { get; set; }
+}
+
+/// <summary>
+/// Lien avec sa direction (page Recherche) : 'I' = prédécesseur, 'O' = successeur
+/// </summary>
+public class LineVisLien : LineVisEdge
+{
+    public string EDG_DIR { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -12,6 +12,8 @@ public interface ILineVisService
     Task<IEnumerable<LineVisEdge>> GetSuccesseursAsync(string dta1, string dta2, string dta3, string dta4);
     Task<LineVisEdg?> GetDetailAsync(string dta1, string dta2, string dta3, string dta4);
     Task<bool> ExistsAsync(string dta1, string dta2, string dta3, string dta4);
+    Task<IEnumerable<LineVisLien>> GetLiensNoeudProgrammeAsync(string dta1, string dta2, string dta3, string dta4, string? exePgmNme);
+    Task<IEnumerable<string>> GetProgrammesAsync();
 }
 
 public class LineVisService : ILineVisService
@@ -72,5 +74,28 @@ public class LineVisService : ILineVisService
             commandType: CommandType.StoredProcedure
         );
         return result == 1;
+    }
+
+    public async Task<IEnumerable<LineVisLien>> GetLiensNoeudProgrammeAsync(string dta1, string dta2, string dta3, string dta4, string? exePgmNme)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        return await connection.QueryAsync<LineVisLien>(
+            "sp_GetLiensNoeudProgramme",
+            new
+            {
+                DTA_1 = dta1, DTA_2 = dta2, DTA_3 = dta3, DTA_4 = dta4,
+                EXE_PGM_NME = new DbString { Value = string.IsNullOrWhiteSpace(exePgmNme) ? null : exePgmNme.Trim(), IsAnsi = true, Length = 500 }
+            },
+            commandType: CommandType.StoredProcedure
+        );
+    }
+
+    public async Task<IEnumerable<string>> GetProgrammesAsync()
+    {
+        using var connection = new SqlConnection(_connectionString);
+        return await connection.QueryAsync<string>(
+            "sp_GetProgrammes",
+            commandType: CommandType.StoredProcedure
+        );
     }
 }

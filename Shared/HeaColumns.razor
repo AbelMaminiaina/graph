@@ -1,0 +1,32 @@
+@using LineVisApp.Models
+
+@code {
+    // Colonnes de LINE_VIS_HEA, communes aux tableaux de liens (Detail, Recherche)
+    public static RenderFragment Headers => @<text>
+        <th>LNA_UID</th>
+        <th>RON_APP</th>
+        <th>PCK_PGM_NME</th>
+        <th>EXE_PGM_NME</th>
+        <th>VRS_EXE_PGM</th>
+        <th>APP_ENV</th>
+        <th>DLY_PGM_TSP</th>
+        <th>LNA_TSP</th>
+        <th>PGM_TEC</th>
+        <th>VRS_LNA_TOO</th>
+        <th>TUS_IND</th>
+    </text>;
+
+    public static RenderFragment Cells(LineVisEdge edge) => @<text>
+        <td>@edge.LNA_UID</td>
+        <td>@edge.RON_APP</td>
+        <td>@edge.PCK_PGM_NME</td>
+        <td>@edge.EXE_PGM_NME</td>
+        <td>@edge.VRS_EXE_PGM</td>
+        <td>@edge.APP_ENV</td>
+        <td class="text-nowrap">@edge.DLY_PGM_TSP?.ToString("yyyy-MM-dd HH:mm")</td>
+        <td class="text-nowrap">@edge.LNA_TSP?.ToString("yyyy-MM-dd HH:mm")</td>
+        <td>@edge.PGM_TEC</td>
+        <td>@edge.VRS_LNA_TOO</td>
+        <td>@edge.TUS_IND</td>
+    </text>;
+}
