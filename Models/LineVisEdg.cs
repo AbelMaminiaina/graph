@@ -64,6 +64,22 @@ public class LineVisLien : LineVisEdge
 }
 
 /// <summary>
+/// Groupe de l'arbre de la page Programme (EDG_2 > EDG_3 > EDG_4 > EDG_1)
+/// </summary>
+public class LineVisGroupe
+{
+    public string Valeur { get; set; } = string.Empty;
+    public int NbNoeuds { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalNoeuds { get; set; }
+}
+
+/// <summary>
+/// Une page de résultats et le nombre total de lignes
+/// </summary>
+public record PageResultat<T>(List<T> Lignes, int Total);
+
+/// <summary>
 /// Élément de navigation pour le graphe
 /// </summary>
 public class GraphNode

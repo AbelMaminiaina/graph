@@ -1,0 +1,320 @@
+@page "/programme"
+@using LineVisApp.Models
+@using LineVisApp.Services
+@inject ILineVisService LineVisService
+
+<PageTitle>LINE_VIS - Programme</PageTitle>
+
+<h3>Predecesseurs et successeurs d'un programme</h3>
+
+<form class="card mb-3" @onsubmit="RechercherAsync">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-5">
+                <label class="form-label" for="pgm">EXE_PGM_NME</label>
+                <input id="pgm" class="form-control" list="programmes" @bind="_exePgmNme" />
+                <datalist id="programmes">
+                    @foreach (var pgm in _programmes)
+                    {
+                        <option value="@pgm"></option>
+                    }
+                </datalist>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="filtre">Filtre <small class="text-muted">(texte dans EDG_1..EDG_4, optionnel)</small></label>
+                <input id="filtre" class="form-control" @bind="_filtre" />
+            </div>
+            <div class="col-md-1">
+                <label class="form-label" for="taille">Lignes</label>
+                <select id="taille" class="form-select" @bind="_pageSize">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100" disabled="@_loading">Rechercher</button>
+            </div>
+        </div>
+        @if (_erreur != null)
+        {
+            <div class="text-danger mt-2">@_erreur</div>
+        }
+    </div>
+</form>
+
+@if (_programme != null)
+{
+    <ul class="nav nav-tabs">
+        <li class="nav-item">
+            <button class="nav-link @(_dir == "I" ? "active" : "")" @onclick='() => ChangerOngletAsync("I")'>
+                Predecesseurs <span class="badge bg-warning text-dark">@_totalPredecesseurs</span>
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_dir == "O" ? "active" : "")" @onclick='() => ChangerOngletAsync("O")'>
+                Successeurs <span class="badge bg-success">@_totalSuccesseurs</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="card border-top-0 mb-3">
+        <div class="card-body p-0">
+            @if (_loading)
+            {
+                <p class="p-3 mb-0"><em>Chargement...</em></p>
+            }
+            else if (_racine.Count == 0)
+            {
+                <p class="p-3 mb-0">Aucun lien</p>
+            }
+            else
+            {
+                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 20%;">EDG_2</th>
+                                <th style="width: 20%;">EDG_3</th>
+                                <th style="width: 20%;">EDG_4</th>
+                                <th>EDG_1</th>
+                                <th class="text-end text-nowrap">Nb noeuds</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @Lignes(_racine)
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        @if (_totalGroupes > 0)
+        {
+            <div class="card-footer d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_loading || _pageIndex == 0)" @onclick="() => AllerPageAsync(0)">&laquo;</button>
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_loading || _pageIndex == 0)" @onclick="() => AllerPageAsync(_pageIndex - 1)">&lsaquo;</button>
+                <span>
+                    Page @(_pageIndex + 1) / @NbPages
+                    <small class="text-muted">(groupes EDG_2 @(_pageIndex * _taillePage + 1) a @(_pageIndex * _taillePage + _racine.Count) sur @_totalGroupes)</small>
+                </span>
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_loading || _pageIndex >= NbPages - 1)" @onclick="() => AllerPageAsync(_pageIndex + 1)">&rsaquo;</button>
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_loading || _pageIndex >= NbPages - 1)" @onclick="() => AllerPageAsync(NbPages - 1)">&raquo;</button>
+                <button class="btn btn-sm btn-outline-secondary ms-auto" disabled="@_loading" @onclick="ToutReplier">Tout replier</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // Ordre des niveaux de l'arbre : colonne 0 = EDG_2, 1 = EDG_3, 2 = EDG_4, 3 = EDG_1 (feuilles)
+    private static readonly int[] Niveaux = { 2, 3, 4, 1 };
+    private const int TailleEnfants = 100;
+
+    private class Noeud
+    {
+        public required LineVisGroupe Groupe { get; init; }
+        public required int Colonne { get; init; }
+        public string? Edg2 { get; init; }
+        public string? Edg3 { get; init; }
+        public string? Edg4 { get; init; }
+        public bool EstFeuille => Colonne == Niveaux.Length - 1;
+        public bool Ouvert { get; set; }
+        public bool Chargement { get; set; }
+        public List<Noeud>? Enfants { get; set; }
+        public int TotalEnfants { get; set; }
+    }
+
+    private string? _exePgmNme, _filtre;
+    private int _pageSize = 100;
+    private IEnumerable<string> _programmes = Enumerable.Empty<string>();
+
+    // Criteres de la derniere recherche (le formulaire peut changer sans relancer)
+    private string? _programme, _filtreApplique;
+    private int _taillePage = 100;
+
+    private string _dir = "I";
+    private int _pageIndex;
+    private List<Noeud> _racine = new();
+    private int _totalGroupes;
+    private int _totalPredecesseurs, _totalSuccesseurs;
+    private string? _erreur;
+    private bool _loading;
+
+    private int NbPages => Math.Max(1, (_totalGroupes + _taillePage - 1) / _taillePage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _programmes = await LineVisService.GetProgrammesAsync();
+    }
+
+    private async Task RechercherAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_exePgmNme))
+        {
+            _erreur = "Le champ EXE_PGM_NME est obligatoire.";
+            return;
+        }
+
+        _erreur = null;
+        _loading = true;
+        _programme = _exePgmNme.Trim();
+        _filtreApplique = _filtre;
+        _taillePage = _pageSize;
+
+        try
+        {
+            // Premiere page des deux directions pour avoir les deux totaux
+            var pred = ChargerRacineAsync("I", 0);
+            var succ = ChargerRacineAsync("O", 0);
+            await Task.WhenAll(pred, succ);
+
+            _totalPredecesseurs = TotalNoeuds(pred.Result);
+            _totalSuccesseurs = TotalNoeuds(succ.Result);
+            _dir = _totalPredecesseurs == 0 && _totalSuccesseurs > 0 ? "O" : "I";
+            AfficherRacine(_dir == "I" ? pred.Result : succ.Result, 0);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ChangerOngletAsync(string dir)
+    {
+        if (dir == _dir) return;
+        _dir = dir;
+        await AllerPageAsync(0);
+    }
+
+    private async Task AllerPageAsync(int index)
+    {
+        if (_programme == null) return;
+        _loading = true;
+        try
+        {
+            var page = await ChargerRacineAsync(_dir, index);
+
+            // Donnees modifiees entre-temps : la page demandee n'existe plus
+            if (page.Lignes.Count == 0 && index > 0)
+            {
+                index = 0;
+                page = await ChargerRacineAsync(_dir, 0);
+            }
+            AfficherRacine(page, index);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task<PageResultat<LineVisGroupe>> ChargerRacineAsync(string dir, int index) =>
+        LineVisService.GetGroupesLiensProgrammeAsync(_programme!, dir, Niveaux[0], null, null, null,
+            _filtreApplique, index * _taillePage, _taillePage);
+
+    private void AfficherRacine(PageResultat<LineVisGroupe> page, int index)
+    {
+        _racine = page.Lignes.Select(g => new Noeud { Groupe = g, Colonne = 0 }).ToList();
+        _totalGroupes = page.Total;
+        _pageIndex = index;
+    }
+
+    private static int TotalNoeuds(PageResultat<LineVisGroupe> page) => page.Lignes.FirstOrDefault()?.TotalNoeuds ?? 0;
+
+    private async Task BasculerAsync(Noeud noeud)
+    {
+        if (noeud.EstFeuille) return;
+        noeud.Ouvert = !noeud.Ouvert;
+        if (noeud.Ouvert && noeud.Enfants == null)
+        {
+            noeud.Enfants = new();
+            await ChargerEnfantsAsync(noeud);
+        }
+    }
+
+    // Charge la page suivante des enfants (premier depliage ou "Afficher plus")
+    private async Task ChargerEnfantsAsync(Noeud parent)
+    {
+        parent.Chargement = true;
+        try
+        {
+            var colonne = parent.Colonne + 1;
+            // Chemin des groupes parents : la valeur du parent s'ajoute a celui-ci
+            var edg2 = parent.Colonne == 0 ? parent.Groupe.Valeur : parent.Edg2;
+            var edg3 = parent.Colonne == 1 ? parent.Groupe.Valeur : parent.Edg3;
+            var edg4 = parent.Colonne == 2 ? parent.Groupe.Valeur : parent.Edg4;
+
+            var page = await LineVisService.GetGroupesLiensProgrammeAsync(_programme!, _dir, Niveaux[colonne],
+                edg2, edg3, edg4, _filtreApplique, parent.Enfants!.Count, TailleEnfants);
+
+            parent.Enfants.AddRange(page.Lignes.Select(g => new Noeud
+            {
+                Groupe = g, Colonne = colonne, Edg2 = edg2, Edg3 = edg3, Edg4 = edg4
+            }));
+            parent.TotalEnfants = page.Total;
+        }
+        finally
+        {
+            parent.Chargement = false;
+        }
+    }
+
+    private void ToutReplier()
+    {
+        foreach (var noeud in _racine)
+        {
+            noeud.Ouvert = false;
+        }
+    }
+
+    private static string Libelle(string valeur) => valeur.Length == 0 ? "(vide)" : valeur;
+
+    private RenderFragment Lignes(List<Noeud> noeuds) => @<text>
+        @foreach (var noeud in noeuds)
+        {
+            <tr class="@(noeud.EstFeuille ? "" : "fw-semibold")"
+                style="@(noeud.EstFeuille ? "" : "cursor: pointer;")"
+                @onclick="() => BasculerAsync(noeud)">
+                @for (var i = 0; i < noeud.Colonne; i++)
+                {
+                    <td></td>
+                }
+                <td colspan="@(Niveaux.Length - noeud.Colonne)" class="text-nowrap">
+                    @if (!noeud.EstFeuille)
+                    {
+                        <span class="text-muted me-1">@(noeud.Ouvert ? "▾" : "▸")</span>
+                    }
+                    <span class="@(noeud.Groupe.Valeur.Length == 0 ? "text-muted fst-italic" : "")">@Libelle(noeud.Groupe.Valeur)</span>
+                </td>
+                <td class="text-end">
+                    @if (!noeud.EstFeuille)
+                    {
+                        <span class="badge bg-secondary">@noeud.Groupe.NbNoeuds</span>
+                    }
+                </td>
+            </tr>
+            @if (noeud.Ouvert && noeud.Enfants != null)
+            {
+                @Lignes(noeud.Enfants)
+                @if (noeud.Chargement)
+                {
+                    <tr>
+                        <td colspan="@(noeud.Colonne + 1)"></td>
+                        <td colspan="@(Niveaux.Length - noeud.Colonne)"><em>Chargement...</em></td>
+                    </tr>
+                }
+                else if (noeud.Enfants.Count < noeud.TotalEnfants)
+                {
+                    <tr>
+                        <td colspan="@(noeud.Colonne + 1)"></td>
+                        <td colspan="@(Niveaux.Length - noeud.Colonne)">
+                            <button class="btn btn-sm btn-link p-0" @onclick="() => ChargerEnfantsAsync(noeud)">
+                                Afficher plus (@(noeud.TotalEnfants - noeud.Enfants.Count) restants)
+                            </button>
+                        </td>
+                    </tr>
+                }
+            }
+        }
+    </text>;
+}

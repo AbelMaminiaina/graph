@@ -14,6 +14,7 @@ public interface ILineVisService
     Task<bool> ExistsAsync(string dta1, string dta2, string dta3, string dta4);
     Task<IEnumerable<LineVisLien>> GetLiensNoeudProgrammeAsync(string dta1, string dta2, string dta3, string dta4, string? exePgmNme);
     Task<IEnumerable<string>> GetProgrammesAsync();
+    Task<PageResultat<LineVisGroupe>> GetGroupesLiensProgrammeAsync(string exePgmNme, string edgDir, int niveau, string? edg2, string? edg3, string? edg4, string? filtre, int offset, int pageSize);
 }
 
 public class LineVisService : ILineVisService
@@ -97,5 +98,27 @@ public class LineVisService : ILineVisService
             "sp_GetProgrammes",
             commandType: CommandType.StoredProcedure
         );
+    }
+
+    public async Task<PageResultat<LineVisGroupe>> GetGroupesLiensProgrammeAsync(string exePgmNme, string edgDir, int niveau, string? edg2, string? edg3, string? edg4, string? filtre, int offset, int pageSize)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        var lignes = (await connection.QueryAsync<LineVisGroupe>(
+            "sp_GetGroupesLiensProgramme",
+            new
+            {
+                EXE_PGM_NME = new DbString { Value = exePgmNme.Trim(), IsAnsi = true, Length = 500 },
+                EDG_DIR = edgDir,
+                Niveau = niveau,
+                EDG_2 = edg2,
+                EDG_3 = edg3,
+                EDG_4 = edg4,
+                Filtre = string.IsNullOrWhiteSpace(filtre) ? null : filtre.Trim(),
+                Offset = offset,
+                PageSize = pageSize
+            },
+            commandType: CommandType.StoredProcedure
+        )).ToList();
+        return new PageResultat<LineVisGroupe>(lignes, lignes.FirstOrDefault()?.TotalCount ?? 0);
     }
 }

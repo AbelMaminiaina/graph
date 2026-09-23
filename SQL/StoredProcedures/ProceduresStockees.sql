@@ -235,3 +235,67 @@ BEGIN
     ORDER BY EXE_PGM_NME;
 END
 GO
+
+-- ===========================================
+-- 8. Predecesseurs ou successeurs d'un programme, en arbre (page Programme)
+--    Noeuds lies distincts (EDG_1..EDG_4) toutes executions confondues, regroupes
+--    par EDG_2 > EDG_3 > EDG_4 > EDG_1 et charges niveau par niveau (depliage)
+--    @Niveau  : 2, 3, 4 = groupes EDG_2 / EDG_3 / EDG_4 ; 1 = noeuds (EDG_1)
+--    @EDG_2/3/4 : valeurs des groupes parents (obligatoires selon le niveau, '' = vide)
+--    @EDG_DIR : 'I' = predecesseurs, 'O' = successeurs
+--    @Filtre  : NULL = pas de filtre, sinon recherche dans EDG_1..EDG_4
+--    Retour : Valeur, NbNoeuds (noeuds distincts du groupe),
+--             TotalCount (nb de groupes, avant pagination), TotalNoeuds (nb de noeuds)
+-- ===========================================
+DROP PROCEDURE IF EXISTS sp_GetLiensProgramme;
+GO
+
+CREATE OR ALTER PROCEDURE sp_GetGroupesLiensProgramme
+    @EXE_PGM_NME VARCHAR(500),
+    @EDG_DIR NVARCHAR(10),
+    @Niveau INT,
+    @EDG_2 NVARCHAR(100) = NULL,
+    @EDG_3 NVARCHAR(100) = NULL,
+    @EDG_4 NVARCHAR(100) = NULL,
+    @Filtre NVARCHAR(100) = NULL,
+    @Offset INT = 0,
+    @PageSize INT = 100
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH Noeuds AS (
+        SELECT DISTINCT
+            ISNULL(e.EDG_1, '') AS EDG_1,
+            ISNULL(e.EDG_2, '') AS EDG_2,
+            ISNULL(e.EDG_3, '') AS EDG_3,
+            ISNULL(e.EDG_4, '') AS EDG_4
+        FROM LINE_VIS_HEA h
+        INNER JOIN LINE_VIS_EDG e ON e.LNA_UID = h.LNA_UID
+        WHERE h.EXE_PGM_NME = @EXE_PGM_NME
+          AND e.EDG_DIR = @EDG_DIR
+          AND (@Filtre IS NULL
+               OR e.EDG_1 LIKE '%' + @Filtre + '%' OR e.EDG_2 LIKE '%' + @Filtre + '%'
+               OR e.EDG_3 LIKE '%' + @Filtre + '%' OR e.EDG_4 LIKE '%' + @Filtre + '%')
+    ),
+    Groupes AS (
+        SELECT
+            CASE @Niveau WHEN 2 THEN EDG_2 WHEN 3 THEN EDG_3 WHEN 4 THEN EDG_4 ELSE EDG_1 END AS Valeur,
+            COUNT(*) AS NbNoeuds
+        FROM Noeuds
+        WHERE (@EDG_2 IS NULL OR EDG_2 = @EDG_2)
+          AND (@EDG_3 IS NULL OR EDG_3 = @EDG_3)
+          AND (@EDG_4 IS NULL OR EDG_4 = @EDG_4)
+        GROUP BY CASE @Niveau WHEN 2 THEN EDG_2 WHEN 3 THEN EDG_3 WHEN 4 THEN EDG_4 ELSE EDG_1 END
+    )
+    SELECT
+        Valeur,
+        NbNoeuds,
+        COUNT(*) OVER () AS TotalCount,
+        SUM(NbNoeuds) OVER () AS TotalNoeuds
+    FROM Groupes
+    ORDER BY Valeur
+    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
+    OPTION (RECOMPILE);
+END
+GO
